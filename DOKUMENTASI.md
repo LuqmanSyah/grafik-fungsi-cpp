@@ -345,16 +345,16 @@ public:
   }
 ```
 
-| Baris   | Penjelasan                                              |
-| ------- | ------------------------------------------------------- | --------------------------------------------------------------------- |
-| 165     | `float (*func)(float)`                                  | Parameter: pointer ke fungsi yang menerima float, return float        |
-| 166-167 | `sf::Color color, const std::string &name`              | Parameter: warna garis dan nama fungsi (name tidak digunakan di sini) |
-| 168     | `std::vector<sf::Vertex> points`                        | Container untuk menyimpan semua titik kurva                           |
-| 169     | `step = (xMax - xMin) / (width * 2)`                    | Hitung increment X untuk smooth curve (2 pixel per step)              |
-| 171-174 | `for (float x = xMin; x <= xMax; x += step)`            | Loop dari xMin ke xMax dengan step tertentu                           |
-| 175     | `float y = func(x)`                                     | Hitung nilai y dari fungsi                                            |
-| 178     | `!std::isnan(y) && !std::isinf(y)`                      | Validasi y tidak NaN atau infinity                                    |
-| 183     | `window.draw(&points[0], points.size(), sf::LineStrip)` | Gambar semua vertex sebagai line strip                                |
+| Baris   | Penjelasan                                                                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------------------ |
+| 165     | `float (*func)(float)` - Parameter: pointer ke fungsi yang menerima float, return float                            |
+| 166-167 | `sf::Color color, const std::string &name` - Parameter: warna garis dan nama fungsi (name tidak digunakan di sini) |
+| 168     | `std::vector<sf::Vertex> points` - Container untuk menyimpan semua titik kurva                                     |
+| 169     | `step = (xMax - xMin) / (width * 2)` - Hitung increment X untuk smooth curve (2 pixel per step)                    |
+| 171-174 | `for (float x = xMin; x <= xMax; x += step)` - Loop dari xMin ke xMax dengan step tertentu                         |
+| 175     | `float y = func(x)` - Hitung nilai y dari fungsi                                                                   |
+| 178     | `!std::isnan(y) && !std::isinf(y)` - Validasi y tidak NaN atau infinity                                            |
+| 183     | `window.draw(&points[0], points.size(), sf::LineStrip)` - Gambar semua vertex sebagai line strip                   |
 
 ### Baris 182-198: Method drawLegend()
 
@@ -389,13 +389,13 @@ public:
   }
 ```
 
-| Baris   | Fungsi                                          |
-| ------- | ----------------------------------------------- | -------------------------------------------------- |
-| 184     | `if (!fontLoaded) return;`                      | Jika font tidak dimuat, keluar                     |
-| 186-188 | `startX, startY, lineHeight`                    | Variabel untuk posisi dan jarak antar item legenda |
-| 190     | `for (size_t i = 0; i < functions.size(); i++)` | Loop untuk setiap fungsi                           |
-| 192-197 | `sf::RectangleShape colorBox`                   | Buat kotak warna kecil 15x15 pixel                 |
-| 199-206 | `sf::Text text`                                 | Buat teks untuk nama fungsi                        |
+| Baris   | Fungsi                                                                            |
+| ------- | --------------------------------------------------------------------------------- |
+| 184     | `if (!fontLoaded) return;` - Jika font tidak dimuat, keluar                       |
+| 186-188 | `startX, startY, lineHeight` - Variabel untuk posisi dan jarak antar item legenda |
+| 190     | `for (size_t i = 0; i < functions.size(); i++)` - Loop untuk setiap fungsi        |
+| 192-197 | `sf::RectangleShape colorBox` - Buat kotak warna kecil 15x15 pixel                |
+| 199-206 | `sf::Text text` - Buat teks untuk nama fungsi                                     |
 
 ### Baris 208-211: Method setRange()
 
@@ -477,11 +477,11 @@ int main()
   window.setFramerateLimit(60);
 ```
 
-| Baris | Fungsi                         |
-| ----- | ------------------------------ | --------------------------------- |
-| 234   | `sf::VideoMode(1000, 700)`     | Buat window ukuran 1000×700 pixel |
-| 234   | `"SFML Graph Plotter..."`      | Judul window                      |
-| 235   | `window.setFramerateLimit(60)` | Batasi FPS ke 60 frame per detik  |
+| Baris | Fungsi                                                            |
+| ----- | ----------------------------------------------------------------- |
+| 234   | `sf::VideoMode(1000, 700)` - Buat window ukuran 1000×700 pixel    |
+| 234   | `"SFML Graph Plotter..."` - Judul window                          |
+| 235   | `window.setFramerateLimit(60)` - Batasi FPS ke 60 frame per detik |
 
 ### Baris 237-240: Inisialisasi GraphPlotter
 
@@ -540,15 +540,15 @@ int main()
   }
 ```
 
-| Baris   | Fungsi                                |
-| ------- | ------------------------------------- | ------------------------------------ |
-| 249     | `while (window.isOpen())`             | Loop utama selama window terbuka     |
-| 251-256 | `sf::Event event`                     | Handle event (close window)          |
-| 258     | `window.clear(sf::Color(20, 20, 30))` | Clear window dengan background gelap |
-| 261     | `plotter.drawAxes()`                  | Gambar sumbu dan grid                |
-| 264-267 | `plotter.plotFunction(...)`           | Gambar 4 fungsi dengan warna berbeda |
-| 270     | `plotter.drawLegend(functions)`       | Gambar legenda di pojok atas         |
-| 272     | `window.display()`                    | Update/refresh display               |
+| Baris   | Fungsi                                                                       |
+| ------- | ---------------------------------------------------------------------------- |
+| 249     | `while (window.isOpen())` - Loop utama selama window terbuka                 |
+| 251-256 | `sf::Event event` - Handle event (close window)                              |
+| 258     | `window.clear(sf::Color(20, 20, 30))` - Clear window dengan background gelap |
+| 261     | `plotter.drawAxes()` - Gambar sumbu dan grid                                 |
+| 264-267 | `plotter.plotFunction(...)` - Gambar 4 fungsi dengan warna berbeda           |
+| 270     | `plotter.drawLegend(functions)` - Gambar legenda di pojok atas               |
+| 272     | `window.display()` - Update/refresh display                                  |
 
 ### Baris 274-276: Return
 
