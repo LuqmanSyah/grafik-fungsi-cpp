@@ -1,0 +1,6 @@
+{
+  "code-runner.executorMap": {
+    "cpp": "g++ main.cpp -o main -lsfml-graphics -lsfml-window -lsfml-system && ./main"
+  },
+  "code-runner.runInTerminal": true
+}
