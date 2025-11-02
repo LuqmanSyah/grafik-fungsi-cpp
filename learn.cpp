@@ -3,6 +3,8 @@
 #include <vector>
 #include <string>
 
+
+
 int main() {
     // Membuat window dengan ukuran 800x600 pixel
     sf::RenderWindow window(sf::VideoMode(800, 600), "Grafik Fungsi y = sin(x)");
