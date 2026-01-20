@@ -36,3 +36,17 @@ Catatan
 - Jika ingin selalu menampilkan label, salin file TTF (mis. `DejaVuSans.ttf`) ke folder proyek dan beri nama `Sansation.ttf` atau sesuaikan path di `main.cpp`.
 
 Jika Anda mau, saya dapat menambahkan file font ke proyek agar label selalu muncul. Kalau tidak perlu, perubahan sudah selesai.
+
+5. Compile program terbaru (2D & 3D):
+# Compile 2D
+g++ -std=c++17 grapher2d.cpp -o grapher2d -lsfml-graphics -lsfml-window -lsfml-system
+
+# Compile 3D
+g++ -std=c++17 grapher3d.cpp -o grapher3d -lsfml-graphics -lsfml-window -lsfml-system
+
+6. Cara run program terbaru (2D & 3D):
+# Run 2D
+./grapher2d
+
+# Run 3D
+./grapher3d
