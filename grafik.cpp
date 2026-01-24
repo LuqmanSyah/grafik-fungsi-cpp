@@ -184,7 +184,15 @@ public:
 // ============================================================================
 
 int main() {
-    sf::RenderWindow win(sf::VideoMode(1200, 750), "Grapher 2D - Fungsi 1 Variabel - Kalkulus 2");
+    const float TOP_BAR_HEIGHT = 70;
+    const float BOTTOM_BAR_HEIGHT = 35;
+    const float WINDOW_WIDTH = 1200;
+    const float WINDOW_HEIGHT = 750;
+    const float GRAPH_TOP = TOP_BAR_HEIGHT;
+    const float GRAPH_BOTTOM = WINDOW_HEIGHT - BOTTOM_BAR_HEIGHT;
+    const float GRAPH_HEIGHT = GRAPH_BOTTOM - GRAPH_TOP;
+    
+    sf::RenderWindow win(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Grapher 2D - Fungsi 1 Variabel - Kalkulus 2");
     win.setFramerateLimit(60);
     
     // Load font
@@ -201,8 +209,8 @@ int main() {
     std::vector<Token> rpn;
     std::string expr = "sin(x)", err;
     
-    // View state
-    sf::Vector2f origin = {600, 375};
+    // View state - adjusted for new graph area
+    sf::Vector2f origin = {WINDOW_WIDTH / 2, GRAPH_TOP + GRAPH_HEIGHT / 2};
     float scale = 60;
     
     // Interaction state
@@ -233,25 +241,31 @@ int main() {
             
             // Reset view
             if (e.type == sf::Event::KeyPressed && e.key.code == sf::Keyboard::R) {
-                origin = {600, 375};
+                origin = {WINDOW_WIDTH / 2, GRAPH_TOP + GRAPH_HEIGHT / 2};
                 scale = 60;
             }
             
-            // Zoom with mouse wheel
+            // Zoom with mouse wheel - only in graph area
             if (e.type == sf::Event::MouseWheelScrolled) {
-                sf::Vector2f mouse(e.mouseWheelScroll.x, e.mouseWheelScroll.y);
-                sf::Vector2f worldBefore = {(mouse.x - origin.x) / scale, (origin.y - mouse.y) / scale};
-                scale *= e.mouseWheelScroll.delta > 0 ? 1.15f : 0.87f;
-                scale = std::min(std::max(scale, 10.f), 300.f);
-                sf::Vector2f screenAfter = {origin.x + worldBefore.x * scale, origin.y - worldBefore.y * scale};
-                origin += mouse - screenAfter;
+                float mouseY = e.mouseWheelScroll.y;
+                if (mouseY >= GRAPH_TOP && mouseY <= GRAPH_BOTTOM) {
+                    sf::Vector2f mouse(e.mouseWheelScroll.x, mouseY);
+                    sf::Vector2f worldBefore = {(mouse.x - origin.x) / scale, (origin.y - mouse.y) / scale};
+                    scale *= e.mouseWheelScroll.delta > 0 ? 1.15f : 0.87f;
+                    scale = std::min(std::max(scale, 10.f), 300.f);
+                    sf::Vector2f screenAfter = {origin.x + worldBefore.x * scale, origin.y - worldBefore.y * scale};
+                    origin += mouse - screenAfter;
+                }
             }
             
-            // Pan with drag
-            if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.y > 60) {
-                dragging = true;
-                dragStart = {float(e.mouseButton.x), float(e.mouseButton.y)};
-                originStart = origin;
+            // Pan with drag - only in graph area
+            if (e.type == sf::Event::MouseButtonPressed) {
+                float mouseY = e.mouseButton.y;
+                if (mouseY >= GRAPH_TOP && mouseY <= GRAPH_BOTTOM) {
+                    dragging = true;
+                    dragStart = {float(e.mouseButton.x), float(e.mouseButton.y)};
+                    originStart = origin;
+                }
             }
             if (e.type == sf::Event::MouseButtonReleased) dragging = false;
             if (e.type == sf::Event::MouseMoved && dragging) {
@@ -262,58 +276,63 @@ int main() {
         // ===== RENDERING =====
         win.clear(sf::Color::White);
         
-        // Top bar
-        sf::RectangleShape bar({1200, 60});
-        bar.setFillColor({250, 250, 250});
-        win.draw(bar);
-        
-        sf::Text txt;
-        txt.setFont(font);
-        txt.setCharacterSize(16);
-        txt.setFillColor(sf::Color::Black);
-        txt.setString("Fungsi f(x): " + expr + "\nTekan Enter untuk plot | R untuk reset | Scroll untuk zoom | Drag untuk pan");
-        txt.setPosition(10, 10);
-        win.draw(txt);
-        
-        // Draw grid
+        // Draw grid (only in graph area)
         sf::VertexArray grid(sf::Lines);
         for (int i = -30; i < 30; i++) {
             float x = origin.x + i * scale * 0.5f;
-            grid.append({{x, 60}, {220, 220, 220}});
-            grid.append({{x, 750}, {220, 220, 220}});
+            if (x >= 0 && x <= WINDOW_WIDTH) {
+                grid.append({{x, GRAPH_TOP}, {220, 220, 220}});
+                grid.append({{x, GRAPH_BOTTOM}, {220, 220, 220}});
+            }
             
             float y = origin.y + i * scale * 0.5f;
-            grid.append({{0, y}, {220, 220, 220}});
-            grid.append({{1200, y}, {220, 220, 220}});
+            if (y >= GRAPH_TOP && y <= GRAPH_BOTTOM) {
+                grid.append({{0, y}, {220, 220, 220}});
+                grid.append({{WINDOW_WIDTH, y}, {220, 220, 220}});
+            }
         }
-        // Draw axes
-        grid.append({{origin.x, 60}, {200, 80, 80}});
-        grid.append({{origin.x, 750}, {200, 80, 80}});
-        grid.append({{0, origin.y}, {200, 80, 80}});
-        grid.append({{1200, origin.y}, {200, 80, 80}});
+        
+        // Draw axes (only in graph area)
+        if (origin.x >= 0 && origin.x <= WINDOW_WIDTH) {
+            grid.append({{origin.x, GRAPH_TOP}, {200, 80, 80}});
+            grid.append({{origin.x, GRAPH_BOTTOM}, {200, 80, 80}});
+        }
+        if (origin.y >= GRAPH_TOP && origin.y <= GRAPH_BOTTOM) {
+            grid.append({{0, origin.y}, {200, 80, 80}});
+            grid.append({{WINDOW_WIDTH, origin.y}, {200, 80, 80}});
+        }
         win.draw(grid);
         
-        // Draw function curve
+        // Draw function curve (clipped to graph area)
         if (!rpn.empty()) {
             sf::VertexArray curve(sf::LineStrip);
             double prevY = 0;
             bool havePrev = false;
             
-            for (int px = 0; px < 1200; px++) {
+            for (int px = 0; px < WINDOW_WIDTH; px++) {
                 bool ok;
                 double x = (px - origin.x) / scale;
                 double y = parser.eval(rpn, x, ok);
                 
                 if (ok && !std::isnan(y) && !std::isinf(y) && fabs(y) < 1000) {
-                    // Detect discontinuities
-                    if (havePrev && fabs(y - prevY) * scale > 3000) {
-                        win.draw(curve);
-                        curve.clear();
-                    }
+                    float screenY = origin.y - float(y) * scale;
                     
-                    curve.append({{float(px), origin.y - float(y) * scale}, {50, 90, 200}});
-                    prevY = y;
-                    havePrev = true;
+                    // Clip to graph area
+                    if (screenY >= GRAPH_TOP && screenY <= GRAPH_BOTTOM) {
+                        // Detect discontinuities
+                        if (havePrev && fabs(y - prevY) * scale > 3000) {
+                            win.draw(curve);
+                            curve.clear();
+                        }
+                        
+                        curve.append({{float(px), screenY}, {50, 90, 200}});
+                        prevY = y;
+                        havePrev = true;
+                    } else {
+                        if (curve.getVertexCount() > 1) win.draw(curve);
+                        curve.clear();
+                        havePrev = false;
+                    }
                 } else {
                     if (curve.getVertexCount() > 1) win.draw(curve);
                     curve.clear();
@@ -323,23 +342,61 @@ int main() {
             if (curve.getVertexCount() > 1) win.draw(curve);
         }
         
+        // Top bar (drawn on top)
+        sf::RectangleShape bar({WINDOW_WIDTH, TOP_BAR_HEIGHT});
+        bar.setFillColor({245, 245, 245});
+        sf::RectangleShape barBorder({WINDOW_WIDTH, 2});
+        barBorder.setPosition(0, TOP_BAR_HEIGHT - 2);
+        barBorder.setFillColor({200, 200, 200});
+        win.draw(bar);
+        win.draw(barBorder);
+        
+        sf::Text txt;
+        txt.setFont(font);
+        txt.setCharacterSize(16);
+        txt.setFillColor(sf::Color::Black);
+        txt.setString("Fungsi f(x): " + expr);
+        txt.setPosition(10, 10);
+        win.draw(txt);
+        
+        sf::Text helpTxt;
+        helpTxt.setFont(font);
+        helpTxt.setCharacterSize(13);
+        helpTxt.setFillColor({80, 80, 80});
+        helpTxt.setString("Enter: plot | R: reset | Scroll: zoom | Drag: pan");
+        helpTxt.setPosition(10, 38);
+        win.draw(helpTxt);
+        
+        // Bottom bar for errors
+        sf::RectangleShape bottomBar({WINDOW_WIDTH, BOTTOM_BAR_HEIGHT});
+        bottomBar.setPosition(0, GRAPH_BOTTOM);
+        bottomBar.setFillColor({245, 245, 245});
+        sf::RectangleShape bottomBorder({WINDOW_WIDTH, 2});
+        bottomBorder.setPosition(0, GRAPH_BOTTOM);
+        bottomBorder.setFillColor({200, 200, 200});
+        win.draw(bottomBorder);
+        win.draw(bottomBar);
+        
         // Error message
         if (!err.empty()) {
-            sf::RectangleShape errBox({1180, 25});
-            errBox.setPosition(10, 715);
-            errBox.setFillColor({255, 230, 230});
-            win.draw(errBox);
-            
             sf::Text etxt;
             etxt.setFont(font);
             etxt.setCharacterSize(14);
             etxt.setString("Error: " + err);
-            etxt.setPosition(15, 718);
+            etxt.setPosition(10, GRAPH_BOTTOM + 8);
             etxt.setFillColor({200, 0, 0});
             win.draw(etxt);
+        } else {
+            sf::Text statusTxt;
+            statusTxt.setFont(font);
+            statusTxt.setCharacterSize(13);
+            statusTxt.setFillColor({80, 80, 80});
+            statusTxt.setString("Scale: " + std::to_string(int(scale)) + "px/unit");
+            statusTxt.setPosition(10, GRAPH_BOTTOM + 8);
+            win.draw(statusTxt);
         }
 
         win.display();
     }
     return 0;
-} 
+}
