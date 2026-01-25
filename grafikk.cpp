@@ -5,18 +5,21 @@
 #include <map>
 #include <functional>
 #include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 // ============================================================================
 // KONSTANTA KONFIGURASI
 // ============================================================================
 
-const float INPUT_BOX_WIDTH = 520.f;
+const float INPUT_BOX_WIDTH = 420.f;
 const float INPUT_BOX_HEIGHT = 40.f;
 const float BUTTON_WIDTH = 100.f;
 const float BUTTON_HEIGHT = 40.f;
-const float TOP_BAR_HEIGHT = 100.f;
+const float TOP_BAR_HEIGHT = 130.f;
+const float RIGHT_PANEL_WIDTH = 280.f;
 
-const int GRID_SIZE = 40; // Balanced between quality and performance
+const int GRID_SIZE = 50; // Increased for better quality
 const float GRID_RANGE = 3.5f;
 
 // ============================================================================
@@ -36,10 +39,13 @@ struct Point3D {
     Point3D(float x = 0, float y = 0, float z = 0) : x(x), y(y), z(z) {}
 };
 
-struct Triangle {
-    sf::Vector2f p[3];
-    float depth;
+struct Function3D {
+    std::string expr;
+    std::vector<Token> rpn;
     sf::Color color;
+    bool visible = true;
+    bool showWireframe = true;
+    bool showSurface = false;
 };
 
 struct InputBox {
@@ -120,7 +126,7 @@ public:
             
             if (isdigit(c) || c == '.') {
                 size_t j = i;
-                while (j < s.size() && (isdigit(s[j]) || s[j] == '.' || s[j] == 'e' || s[j] == 'E'))
+                while (j < s.size() && (isdigit(s[j]) || s[j] == '.' || s[j] == 'e' || s[j] == 'E' || s[j] == '-'))
                     j++;
                 toks.push_back({Token::NUMBER, strtod(s.c_str() + i, 0)});
                 i = j;
@@ -134,6 +140,8 @@ public:
                 
                 if (id == "x") toks.push_back({Token::VAR_X});
                 else if (id == "y") toks.push_back({Token::VAR_Y});
+                else if (id == "pi") toks.push_back({Token::NUMBER, 3.14159265358979});
+                else if (id == "e") toks.push_back({Token::NUMBER, 2.71828182845905});
                 else toks.push_back({Token::FUNC, 0, id});
                 
                 i = j;
@@ -154,7 +162,6 @@ public:
             return {};
         }
         
-        // Handle unary minus
         std::vector<Token> out;
         for (size_t i = 0; i < toks.size(); i++) {
             if (toks[i].type == Token::OP && toks[i].text == "-" &&
@@ -198,6 +205,10 @@ public:
         }
         
         while (!st.empty()) {
+            if (st.back().type == Token::LPAREN) {
+                err = "Kurung tidak seimbang";
+                return {};
+            }
             out.push_back(st.back());
             st.pop_back();
         }
@@ -223,7 +234,7 @@ public:
                 if (t.text == "+") r = a + b;
                 else if (t.text == "-") r = a - b;
                 else if (t.text == "*") r = a * b;
-                else if (t.text == "/") r = a / b;
+                else if (t.text == "/") r = (b != 0) ? a / b : (ok = false, 0);
                 else if (t.text == "^") r = pow(a, b);
                 st.push_back(r);
             } else if (t.type == Token::FUNC) {
@@ -242,32 +253,27 @@ public:
 // ============================================================================
 
 sf::Vector2f project3D(Point3D p, float rotX, float rotY, float scale, sf::Vector2f origin) {
-    // Rotation around Y-axis (yaw)
     float cosY = cos(rotY), sinY = sin(rotY);
     float x1 = p.x * cosY - p.z * sinY;
     float z1 = p.x * sinY + p.z * cosY;
     
-    // Rotation around X-axis (pitch)
     float cosX = cos(rotX), sinX = sin(rotX);
     float y2 = p.y * cosX - z1 * sinX;
     float z2 = p.y * sinX + z1 * cosX;
     
-    // Perspective projection
     float distance = 15.0f;
     float factor = distance / (distance + z2);
     
     return {origin.x + x1 * factor * scale, origin.y - y2 * factor * scale};
 }
 
-float getDepth(Point3D p, float rotX, float rotY) {
-    float cosY = cos(rotY), sinY = sin(rotY);
-    float x1 = p.x * cosY - p.z * sinY;
-    float z1 = p.x * sinY + p.z * cosY;
-    
-    float cosX = cos(rotX), sinX = sin(rotX);
-    float z2 = p.y * sinX + z1 * cosX;
-    
-    return z2;
+std::string formatNumber(double val) {
+    std::ostringstream oss;
+    if (fabs(val) < 0.01 || fabs(val) > 1000)
+        oss << std::scientific << std::setprecision(2) << val;
+    else
+        oss << std::fixed << std::setprecision(2) << val;
+    return oss.str();
 }
 
 // ============================================================================
@@ -275,14 +281,12 @@ float getDepth(Point3D p, float rotX, float rotY) {
 // ============================================================================
 
 int main() {
-    // Enable anti-aliasing
     sf::ContextSettings settings;
     settings.antialiasingLevel = 4;
     
-    sf::RenderWindow win(sf::VideoMode(1200, 800), "Grapher 3D - Fungsi 2 Variabel", sf::Style::Default, settings);
+    sf::RenderWindow win(sf::VideoMode(1400, 900), "Grapher 3D - Kalkulus 2 (Revised)", sf::Style::Default, settings);
     win.setFramerateLimit(60);
     
-    // Load font
     sf::Font font;
     std::vector<std::string> fonts = {
         "C:\\Windows\\Fonts\\Arial.ttf",
@@ -291,29 +295,28 @@ int main() {
     };
     for (auto& f : fonts) if (font.loadFromFile(f)) break;
 
-    // Initialize parser
     Parser parser;
-    std::vector<Token> rpn;
+    std::vector<Function3D> functions;
     std::string err;
+    int selectedFunc = -1;
     
-    // 3D View state
-    sf::Vector2f origin = {600, 450};
+    sf::Vector2f origin = {(1400 - RIGHT_PANEL_WIDTH) / 2.f, 500};
     float scale = 50;
     float rotX = -0.5f;
     float rotY = 0.3f;
     
-    // Interaction state
     bool dragging = false;
     sf::Vector2f dragStart;
     float dragRotX, dragRotY;
     
-    // Clock for cursor animation
+    bool showAxes = true;
+    bool showGrid = true;
     sf::Clock clock;
     
     // Input Box
     InputBox inputBox;
     inputBox.content = "sin(x)*cos(y)";
-    inputBox.position = {20, 25};
+    inputBox.position = {20, 35};
     inputBox.box.setSize({INPUT_BOX_WIDTH, INPUT_BOX_HEIGHT});
     inputBox.box.setPosition(inputBox.position);
     inputBox.box.setFillColor({255, 255, 255});
@@ -328,31 +331,43 @@ int main() {
     inputBox.cursor.setSize({2, 28});
     inputBox.cursor.setFillColor({50, 50, 50});
     
-    // Plot Button
-    Button plotButton;
-    plotButton.shape.setSize({BUTTON_WIDTH, BUTTON_HEIGHT});
-    plotButton.shape.setPosition(inputBox.position.x + INPUT_BOX_WIDTH + 15, inputBox.position.y);
-    plotButton.shape.setFillColor({70, 130, 200});
+    // Add Button
+    Button addButton;
+    addButton.shape.setSize({BUTTON_WIDTH, BUTTON_HEIGHT});
+    addButton.shape.setPosition(inputBox.position.x + INPUT_BOX_WIDTH + 15, inputBox.position.y);
+    addButton.shape.setFillColor({70, 130, 200});
     
-    plotButton.label.setFont(font);
-    plotButton.label.setString("PLOT");
-    plotButton.label.setCharacterSize(16);
-    plotButton.label.setFillColor({255, 255, 255});
-    plotButton.label.setStyle(sf::Text::Bold);
-    sf::FloatRect textBounds = plotButton.label.getLocalBounds();
-    plotButton.label.setOrigin(textBounds.left + textBounds.width/2.0f, textBounds.top + textBounds.height/2.0f);
-    plotButton.label.setPosition(
-        plotButton.shape.getPosition().x + BUTTON_WIDTH/2.0f,
-        plotButton.shape.getPosition().y + BUTTON_HEIGHT/2.0f
+    addButton.label.setFont(font);
+    addButton.label.setString("ADD");
+    addButton.label.setCharacterSize(16);
+    addButton.label.setFillColor({255, 255, 255});
+    addButton.label.setStyle(sf::Text::Bold);
+    sf::FloatRect textBounds = addButton.label.getLocalBounds();
+    addButton.label.setOrigin(textBounds.left + textBounds.width/2.0f, textBounds.top + textBounds.height/2.0f);
+    addButton.label.setPosition(
+        addButton.shape.getPosition().x + BUTTON_WIDTH/2.0f,
+        addButton.shape.getPosition().y + BUTTON_HEIGHT/2.0f
     );
     
-    // Compile initial expression
     auto compile = [&]() {
         auto t = parser.parse(inputBox.content, err);
-        if (err.empty()) rpn = parser.toRPN(t, err);
-        else rpn.clear();
+        if (err.empty()) {
+            auto rpn = parser.toRPN(t, err);
+            if (err.empty() && !rpn.empty()) {
+                Function3D f;
+                f.expr = inputBox.content;
+                f.rpn = rpn;
+                static int colorIdx = 0;
+                sf::Color colors[] = {
+                    {70, 120, 220}, {220, 70, 120}, {70, 220, 120}, 
+                    {220, 170, 70}, {170, 70, 220}, {70, 220, 220}
+                };
+                f.color = colors[colorIdx++ % 6];
+                functions.push_back(f);
+                inputBox.content.clear();
+            }
+        }
     };
-    compile();
 
     while (win.isOpen()) {
         sf::Event e;
@@ -361,40 +376,36 @@ int main() {
         while (win.pollEvent(e)) {
             if (e.type == sf::Event::Closed) win.close();
             
-            // Paste functionality with Ctrl+V
             if (inputBox.focused && e.type == sf::Event::KeyPressed) {
                 if (e.key.code == sf::Keyboard::V && (e.key.control || e.key.system)) {
                     std::string clipboard = sf::Clipboard::getString();
                     inputBox.content += clipboard;
                 }
-                // Select all with Ctrl+A
-                else if (e.key.code == sf::Keyboard::A && (e.key.control || e.key.system)) {
-                    // For now, just ignore - could implement text selection later
-                }
             }
             
-            // Mouse click events
             if (e.type == sf::Event::MouseButtonPressed && e.mouseButton.button == sf::Mouse::Left) {
                 sf::Vector2f clickPos(e.mouseButton.x, e.mouseButton.y);
                 
-                // Click on input box
                 if (inputBox.contains(clickPos)) {
                     inputBox.focused = true;
                 }
-                // Click on plot button
-                else if (plotButton.contains(clickPos)) {
-                    plotButton.pressed = true;
+                else if (addButton.contains(clickPos)) {
+                    addButton.pressed = true;
                     compile();
                 }
-                // Click on graph area - start dragging
-                else if (e.mouseButton.y > TOP_BAR_HEIGHT) {
+                else if (clickPos.x >= 1400 - RIGHT_PANEL_WIDTH && clickPos.y >= TOP_BAR_HEIGHT) {
+                    int idx = (clickPos.y - TOP_BAR_HEIGHT - 40) / 30;
+                    if (idx >= 0 && idx < functions.size()) {
+                        selectedFunc = idx;
+                    }
+                }
+                else if (e.mouseButton.y > TOP_BAR_HEIGHT && clickPos.x < 1400 - RIGHT_PANEL_WIDTH) {
                     inputBox.focused = false;
                     dragging = true;
                     dragStart = clickPos;
                     dragRotX = rotX;
                     dragRotY = rotY;
                 }
-                // Click elsewhere - unfocus
                 else {
                     inputBox.focused = false;
                 }
@@ -402,19 +413,18 @@ int main() {
             
             if (e.type == sf::Event::MouseButtonReleased) {
                 dragging = false;
-                plotButton.pressed = false;
+                addButton.pressed = false;
             }
             
-            // Text input when focused
             if (inputBox.focused && e.type == sf::Event::TextEntered) {
                 if (e.text.unicode == '\r' || e.text.unicode == '\n') {
                     compile();
                     inputBox.focused = false;
                 }
-                else if (e.text.unicode == 27) { // Escape
+                else if (e.text.unicode == 27) {
                     inputBox.focused = false;
                 }
-                else if (e.text.unicode == 8) { // Backspace
+                else if (e.text.unicode == 8) {
                     if (!inputBox.content.empty())
                         inputBox.content.pop_back();
                 }
@@ -423,23 +433,26 @@ int main() {
                 }
             }
             
-            // Keyboard shortcuts (when not typing in input box)
             if (e.type == sf::Event::KeyPressed && !inputBox.focused) {
                 if (e.key.code == sf::Keyboard::R) {
-                    origin = {600, 450};
+                    origin = {(1400 - RIGHT_PANEL_WIDTH) / 2.f, 500};
                     scale = 50;
                     rotX = -0.5f;
                     rotY = 0.3f;
                 }
+                if (e.key.code == sf::Keyboard::A) showAxes = !showAxes;
+                if (e.key.code == sf::Keyboard::G) showGrid = !showGrid;
+                if (e.key.code == sf::Keyboard::Delete && selectedFunc >= 0 && selectedFunc < functions.size()) {
+                    functions.erase(functions.begin() + selectedFunc);
+                    selectedFunc = -1;
+                }
             }
             
-            // Zoom
-            if (e.type == sf::Event::MouseWheelScrolled && mousePos.y > TOP_BAR_HEIGHT) {
+            if (e.type == sf::Event::MouseWheelScrolled && mousePos.y > TOP_BAR_HEIGHT && mousePos.x < 1400 - RIGHT_PANEL_WIDTH) {
                 scale *= e.mouseWheelScroll.delta > 0 ? 1.15f : 0.87f;
                 scale = std::min(std::max(scale, 10.f), 300.f);
             }
             
-            // Drag rotation
             if (e.type == sf::Event::MouseMoved && dragging) {
                 sf::Vector2f delta = sf::Vector2f(e.mouseMove.x, e.mouseMove.y) - dragStart;
                 rotY = dragRotY + delta.x * 0.01f;
@@ -448,22 +461,21 @@ int main() {
             }
         }
         
-        // Update animations
         float dt = clock.restart().asSeconds();
         inputBox.update(dt);
-        plotButton.update(mousePos);
+        addButton.update(mousePos);
 
         // ===== RENDERING =====
-        win.clear({240, 242, 245});
+        win.clear({235, 238, 242});
         
-        // Top bar background
-        sf::RectangleShape topBar({1200, TOP_BAR_HEIGHT});
-        topBar.setFillColor({250, 251, 252});
+        // Top bar
+        sf::RectangleShape topBar({1400, TOP_BAR_HEIGHT});
+        topBar.setFillColor({248, 249, 250});
         win.draw(topBar);
         
-        sf::RectangleShape topBarLine({1200, 2});
+        sf::RectangleShape topBarLine({1400, 2});
         topBarLine.setPosition(0, TOP_BAR_HEIGHT);
-        topBarLine.setFillColor({220, 220, 220});
+        topBarLine.setFillColor({215, 218, 222});
         win.draw(topBarLine);
         
         // Label
@@ -489,90 +501,95 @@ int main() {
         win.draw(inputBox.box);
         win.draw(inputBox.text);
         
-        // Cursor
         if (inputBox.focused && inputBox.cursorVisible) {
             sf::FloatRect textBounds = inputBox.text.getGlobalBounds();
             inputBox.cursor.setPosition(textBounds.left + textBounds.width + 3, inputBox.position.y + 6);
             win.draw(inputBox.cursor);
         }
         
-        // Plot button
-        if (plotButton.pressed) {
-            plotButton.shape.setFillColor({50, 100, 160});
-        } else if (plotButton.hovered) {
-            plotButton.shape.setFillColor({90, 150, 220});
+        // Add button
+        if (addButton.pressed) {
+            addButton.shape.setFillColor({50, 100, 160});
+        } else if (addButton.hovered) {
+            addButton.shape.setFillColor({90, 150, 220});
         } else {
-            plotButton.shape.setFillColor({70, 130, 200});
+            addButton.shape.setFillColor({70, 130, 200});
         }
-        win.draw(plotButton.shape);
-        win.draw(plotButton.label);
+        win.draw(addButton.shape);
+        win.draw(addButton.label);
         
         // Help text
         sf::Text helpText;
         helpText.setFont(font);
-        helpText.setCharacterSize(13);
-        helpText.setFillColor({120, 120, 120});
-        helpText.setString("R = Reset View  |  Scroll = Zoom  |  Drag = Rotate  |  Enter = Plot");
-        helpText.setPosition(20, 72);
+        helpText.setCharacterSize(12);
+        helpText.setFillColor({110, 110, 110});
+        helpText.setString("Enter = Add  |  R = Reset  |  G = Grid  |  A = Axes  |  Delete = Remove  |  Drag = Rotate  |  Scroll = Zoom");
+        helpText.setPosition(20, 85);
         win.draw(helpText);
         
-        // Render 3D surface as wireframe grid
-        if (!rpn.empty()) {
-            const float step = (2 * GRID_RANGE) / GRID_SIZE;
+        sf::Text constText;
+        constText.setFont(font);
+        constText.setCharacterSize(11);
+        constText.setFillColor({120, 120, 120});
+        constText.setString("Konstanta: pi, e  |  Fungsi: sin, cos, tan, exp, ln, sqrt, abs, dll");
+        constText.setPosition(20, 105);
+        win.draw(constText);
+        
+        // Draw 3D surfaces
+        for (auto& func : functions) {
+            if (!func.visible) continue;
             
+            const float step = (2 * GRID_RANGE) / GRID_SIZE;
             std::vector<sf::Vertex> lines;
             
-            // Generate wireframe mesh
             for (int i = 0; i <= GRID_SIZE; i++) {
                 for (int j = 0; j <= GRID_SIZE; j++) {
                     float x = -GRID_RANGE + i * step;
                     float y = -GRID_RANGE + j * step;
                     
                     bool ok;
-                    float z = parser.eval(rpn, x, y, ok);
+                    float z = parser.eval(func.rpn, x, y, ok);
                     
                     if (!ok || std::isnan(z) || std::isinf(z) || fabs(z) > 10) continue;
                     
                     auto p = project3D({x, y, z}, rotX, rotY, scale, origin);
                     
-                    // Color gradient based on height
                     float h = std::min(std::max((z + 2) / 4.0f, 0.f), 1.f);
+                    sf::Color baseColor = func.color;
                     sf::Color color(
-                        static_cast<sf::Uint8>(50 + h * 150),
-                        static_cast<sf::Uint8>(90 + h * 120),
-                        static_cast<sf::Uint8>(220 - h * 80)
+                        static_cast<sf::Uint8>(baseColor.r * (0.4f + h * 0.6f)),
+                        static_cast<sf::Uint8>(baseColor.g * (0.4f + h * 0.6f)),
+                        static_cast<sf::Uint8>(baseColor.b * (0.4f + h * 0.6f))
                     );
                     
-                    // Draw horizontal lines
                     if (i < GRID_SIZE) {
                         float x2 = -GRID_RANGE + (i + 1) * step;
                         bool ok2;
-                        float z2 = parser.eval(rpn, x2, y, ok2);
+                        float z2 = parser.eval(func.rpn, x2, y, ok2);
                         if (ok2 && !std::isnan(z2) && !std::isinf(z2) && fabs(z2) < 10) {
                             auto p2 = project3D({x2, y, z2}, rotX, rotY, scale, origin);
                             float h2 = std::min(std::max((z2 + 2) / 4.0f, 0.f), 1.f);
                             sf::Color color2(
-                                static_cast<sf::Uint8>(50 + h2 * 150),
-                                static_cast<sf::Uint8>(90 + h2 * 120),
-                                static_cast<sf::Uint8>(220 - h2 * 80)
+                                static_cast<sf::Uint8>(baseColor.r * (0.4f + h2 * 0.6f)),
+                                static_cast<sf::Uint8>(baseColor.g * (0.4f + h2 * 0.6f)),
+                                static_cast<sf::Uint8>(baseColor.b * (0.4f + h2 * 0.6f))
                             );
                             lines.push_back({p, color});
                             lines.push_back({p2, color2});
                         }
                     }
                     
-                    // Draw vertical lines
                     if (j < GRID_SIZE) {
                         float y2 = -GRID_RANGE + (j + 1) * step;
                         bool ok2;
-                        float z2 = parser.eval(rpn, x, y2, ok2);
+                        float z2 = parser.eval(func.rpn, x, y2, ok2);
                         if (ok2 && !std::isnan(z2) && !std::isinf(z2) && fabs(z2) < 10) {
                             auto p2 = project3D({x, y2, z2}, rotX, rotY, scale, origin);
                             float h2 = std::min(std::max((z2 + 2) / 4.0f, 0.f), 1.f);
                             sf::Color color2(
-                                static_cast<sf::Uint8>(50 + h2 * 150),
-                                static_cast<sf::Uint8>(90 + h2 * 120),
-                                static_cast<sf::Uint8>(220 - h2 * 80)
+                                static_cast<sf::Uint8>(baseColor.r * (0.4f + h2 * 0.6f)),
+                                static_cast<sf::Uint8>(baseColor.g * (0.4f + h2 * 0.6f)),
+                                static_cast<sf::Uint8>(baseColor.b * (0.4f + h2 * 0.6f))
                             );
                             lines.push_back({p, color});
                             lines.push_back({p2, color2});
@@ -581,12 +598,13 @@ int main() {
                 }
             }
             
-            // Draw all grid lines
             if (!lines.empty()) {
                 win.draw(&lines[0], lines.size(), sf::Lines);
             }
-            
-            // Draw 3D axes
+        }
+        
+        // Draw 3D axes
+        if (showAxes) {
             auto axisX1 = project3D({-GRID_RANGE, 0, 0}, rotX, rotY, scale, origin);
             auto axisX2 = project3D({GRID_RANGE, 0, 0}, rotX, rotY, scale, origin);
             auto axisY1 = project3D({0, -GRID_RANGE, 0}, rotX, rotY, scale, origin);
@@ -601,11 +619,10 @@ int main() {
             };
             win.draw(axes, 6, sf::Lines);
             
-            // Axis labels
             sf::Text xLabel, yLabel, zLabel;
             xLabel.setFont(font); yLabel.setFont(font); zLabel.setFont(font);
             xLabel.setCharacterSize(14); yLabel.setCharacterSize(14); zLabel.setCharacterSize(14);
-            xLabel.setFillColor({200, 50, 50}); yLabel.setFillColor({50, 200, 50}); zLabel.setFillColor({50, 50, 200});
+            xLabel.setFillColor({220, 50, 50}); yLabel.setFillColor({50, 220, 50}); zLabel.setFillColor({50, 50, 220});
             xLabel.setString("X"); yLabel.setString("Y"); zLabel.setString("Z");
             xLabel.setPosition(axisX2.x + 5, axisX2.y - 5);
             yLabel.setPosition(axisY2.x + 5, axisY2.y - 5);
@@ -613,22 +630,105 @@ int main() {
             win.draw(xLabel); win.draw(yLabel); win.draw(zLabel);
         }
         
-        // Error message
-        if (!err.empty()) {
-            sf::RectangleShape errBox({1180, 30});
-            errBox.setPosition(10, 760);
-            errBox.setFillColor({255, 235, 235});
-            errBox.setOutlineThickness(1);
-            errBox.setOutlineColor({220, 180, 180});
-            win.draw(errBox);
+        // Right panel
+        sf::RectangleShape rightPanel({RIGHT_PANEL_WIDTH, 900});
+        rightPanel.setPosition(1400 - RIGHT_PANEL_WIDTH, 0);
+        rightPanel.setFillColor({248, 249, 250});
+        win.draw(rightPanel);
+        
+        sf::RectangleShape panelBorder({2, 900});
+        panelBorder.setPosition(1400 - RIGHT_PANEL_WIDTH - 2, 0);
+        panelBorder.setFillColor({215, 218, 222});
+        win.draw(panelBorder);
+        
+        sf::Text panelTitle;
+        panelTitle.setFont(font);
+        panelTitle.setCharacterSize(15);
+        panelTitle.setFillColor({60, 60, 60});
+        panelTitle.setStyle(sf::Text::Bold);
+        panelTitle.setString("Daftar Fungsi (" + std::to_string(functions.size()) + ")");
+        panelTitle.setPosition(1400 - RIGHT_PANEL_WIDTH + 15, TOP_BAR_HEIGHT + 10);
+        win.draw(panelTitle);
+        
+        for (size_t i = 0; i < functions.size(); i++) {
+            float y = TOP_BAR_HEIGHT + 40 + i * 30;
             
+            sf::RectangleShape funcBg({RIGHT_PANEL_WIDTH - 30, 26});
+            funcBg.setPosition(1400 - RIGHT_PANEL_WIDTH + 15, y);
+            funcBg.setFillColor(i == selectedFunc ? sf::Color(220, 235, 255) : sf::Color(255, 255, 255));
+            funcBg.setOutlineThickness(1);
+            funcBg.setOutlineColor({210, 210, 210});
+            win.draw(funcBg);
+            
+            sf::CircleShape colorDot(6);
+            colorDot.setPosition(1400 - RIGHT_PANEL_WIDTH + 22, y + 7);
+            colorDot.setFillColor(functions[i].color);
+            win.draw(colorDot);
+            
+            sf::Text funcText;
+            funcText.setFont(font);
+            funcText.setCharacterSize(11);
+            funcText.setFillColor({40, 40, 40});
+            std::string label = functions[i].expr;
+            if (label.length() > 28) label = label.substr(0, 25) + "...";
+            funcText.setString(label);
+            funcText.setPosition(1400 - RIGHT_PANEL_WIDTH + 40, y + 6);
+            win.draw(funcText);
+        }
+        
+        // Info panel
+        sf::Text infoTitle;
+        infoTitle.setFont(font);
+        infoTitle.setCharacterSize(14);
+        infoTitle.setFillColor({60, 60, 60});
+        infoTitle.setStyle(sf::Text::Bold);
+        infoTitle.setString("Info View");
+        infoTitle.setPosition(1400 - RIGHT_PANEL_WIDTH + 15, TOP_BAR_HEIGHT + 300);
+        win.draw(infoTitle);
+        
+        sf::Text rotInfo;
+        rotInfo.setFont(font);
+        rotInfo.setCharacterSize(11);
+        rotInfo.setFillColor({90, 90, 90});
+        rotInfo.setString(
+            "Rotation X: " + formatNumber(rotX * 57.2958) + "\xB0\n"
+            "Rotation Y: " + formatNumber(rotY * 57.2958) + "\xB0\n"
+            "Scale: " + std::to_string(int(scale)) + " px/unit\n"
+            "Grid: " + std::string(showGrid ? "ON" : "OFF") + "\n"
+            "Axes: " + std::string(showAxes ? "ON" : "OFF")
+        );
+        rotInfo.setPosition(1400 - RIGHT_PANEL_WIDTH + 15, TOP_BAR_HEIGHT + 325);
+        rotInfo.setLineSpacing(1.5f);
+        win.draw(rotInfo);
+        
+        // Status bar
+        sf::RectangleShape statusBar({1400, 35});
+        statusBar.setPosition(0, 865);
+        statusBar.setFillColor({248, 249, 250});
+        win.draw(statusBar);
+        
+        sf::RectangleShape statusBorder({1400, 2});
+        statusBorder.setPosition(0, 865);
+        statusBorder.setFillColor({215, 218, 222});
+        win.draw(statusBorder);
+        
+        if (!err.empty()) {
             sf::Text etxt;
             etxt.setFont(font);
-            etxt.setCharacterSize(14);
+            etxt.setCharacterSize(13);
             etxt.setString("Error: " + err);
-            etxt.setPosition(20, 766);
+            etxt.setPosition(15, 873);
             etxt.setFillColor({200, 50, 50});
             win.draw(etxt);
+        } else {
+            sf::Text statusTxt;
+            statusTxt.setFont(font);
+            statusTxt.setCharacterSize(12);
+            statusTxt.setFillColor({90, 90, 90});
+            statusTxt.setString("Functions: " + std::to_string(functions.size()) + 
+                              " | Grid Resolution: " + std::to_string(GRID_SIZE) + "x" + std::to_string(GRID_SIZE));
+            statusTxt.setPosition(15, 873);
+            win.draw(statusTxt);
         }
 
         win.display();
